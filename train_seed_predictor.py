@@ -44,14 +44,14 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
                     if phase == 'train':
                         loss.backward()
                         optimizer.step()
-                # statistics
                 running_loss += loss.item() * inputs.size(0)
+
             if phase == 'train':
                 scheduler.step()
 
             if running_loss < min_loss:
-                print (min_loss)
                 min_loss = running_loss
+                print (min_loss)
                 best_model_wts = copy.deepcopy(model.state_dict())
         print()
 
@@ -157,12 +157,11 @@ if __name__ == "__main__":
                     Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
                  ])
 
-    dataset = SeedPredictionDataset(root_dir='train/train/latents/', transform=transforms)
+    dataset = SeedPredictionDataset(root_dir='train/train/', transform=transforms)
     dataloader = DataLoader(dataset, batch_size=4, shuffle=True, num_workers=0)
     assert (torch.cuda.is_available())
     device = torch.device('cuda')
 
-    # Get a batch of training data
     for index, batch in enumerate(dataloader):
         images = batch['image'].float()
         latents = batch['latents'].float()
@@ -182,7 +181,8 @@ if __name__ == "__main__":
 
     criterion = nn.MSELoss()
 
-    optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+    # optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
     exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
-    model_conv = train_model(model, criterion, optimizer, exp_lr_scheduler, num_epochs=25)
+    model_conv = train_model(model, criterion, optimizer, exp_lr_scheduler, num_epochs=100)
     print ('Done')
