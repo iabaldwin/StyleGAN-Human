@@ -23,9 +23,17 @@ class LossNetwork(torch.nn.Module):
     def forward(self, input, target_image):
         label = torch.zeros([1, self.G.c_dim]).to(self.device)
         # Compute latent code
-        latent = self.G.mapping(input, label, 1.0)
+        # latent = self.G.mapping(input[0], label, 1.0)
         # Synthesize image
-        synthesized = self.G.synthesis(latent, force_fp32 = True)
+        # synthesized = self.G.synthesis(input, force_fp32 = True)
+
+        W = input[0, :]
+        print (W.shape)
+        W = W.repeat((16, 1))
+        print (W.shape)
+        W = torch.unsqueeze(W, 0)
+        print (W.shape)
+        synthesized = self.G.synthesis(W, force_fp32 = True)
 
         target = T.ToTensor()(target_image).cuda()
         target = T.Normalize(mean=self.batch_mean, std=self.batch_std)(target)

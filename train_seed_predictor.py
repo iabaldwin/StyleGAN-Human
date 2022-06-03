@@ -2,39 +2,39 @@ import os
 import time
 import copy
 
-from skimage import io, transform
 import numpy as np
 from matplotlib import pyplot as plt
-
 from PIL import Image
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torchvision
-import torchvision.models as models
 import torch.backends.cudnn as cudnn
 from torch.utils.data import Dataset, DataLoader
-from torchvision import datasets, models, transforms
 from torch.optim import lr_scheduler
+
+import torchvision
+import torchvision.models as models
+from torchvision import datasets, models, transforms
 import torchvision.transforms.functional as F
 
 cudnn.benchmark = True
+device = torch.device('cuda')
 
 def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
     since = time.time()
     best_model_wts = copy.deepcopy(model.state_dict())
     min_loss = np.inf
-    best_acc = 0.0
     for epoch in range(num_epochs):
         print(f'Epoch {epoch}/{num_epochs - 1}')
         print('-' * 10)
-        for phase in ['train']: # Just train currently
+        for phase in ['train', 'test']:
             if phase == 'train':
-                model.train()  # Set model to training mode
+                model.train()
             else:
-                model.eval()   # Set model to evaluate mode
+                model.eval()
             running_loss = 0.0
-            for index, batch in enumerate(dataloader):
+            for batch in dataloaders[phase]:
                 inputs = batch['image'].float().to(device)
                 latents = batch['latents'].float().to(device)
                 optimizer.zero_grad()
@@ -44,21 +44,24 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
                     if phase == 'train':
                         loss.backward()
                         optimizer.step()
+                # Loss x batch-size
                 running_loss += loss.item() * inputs.size(0)
 
             if phase == 'train':
                 scheduler.step()
 
-            if running_loss < min_loss:
-                min_loss = running_loss
+            epoch_loss = running_loss / len(datasets[phase])
+            print(f'{phase} Loss: {epoch_loss:.4f}')
+            if phase == 'test' and epoch_loss < min_loss:
+                min_loss = epoch_loss
                 print (min_loss)
                 best_model_wts = copy.deepcopy(model.state_dict())
+
         print()
 
     time_elapsed = time.time() - since
     print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
     model.load_state_dict(best_model_wts)
-    torch.save(model, 'prediction.pt')
     return model
 
 class SeedPredictionDataset(Dataset):
@@ -66,8 +69,8 @@ class SeedPredictionDataset(Dataset):
         assert (os.path.isdir(root_dir))
         contents = [os.path.join(root_dir, x) for x in os.listdir(root_dir)]
         self._images = [image for image in contents if image.endswith('.png')]
-        self._seeds = [seed for seed in contents if seed.endswith('.txt')]
-        assert (len(self._images) == len(self._seeds)), f'{len(self._images)} vs. {len(self._seeds)}'
+        self._latents = [seed for seed in contents if seed.endswith('.txt')]
+        assert (len(self._images) == len(self._latents)), f'{len(self._images)} vs. {len(self._latents)}'
         self.transform = transform
 
     def __len__(self):
@@ -77,10 +80,9 @@ class SeedPredictionDataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
         image = Image.open(self._images[idx])
-        latents = np.loadtxt(self._seeds[idx])
-        sample = {'image': image, 'latents': latents}
-        if self.transform:
-            sample = self.transform(sample)
+        latents = np.loadtxt(self._latents[idx])
+        sample = {'image': image, 'latents': latents[0, :]}
+        sample = self.transform(sample)
         return sample
 
 class SquarePad:
@@ -114,21 +116,11 @@ class ToTensor(object):
 
 class RandomCrop(object):
     def __init__(self, output_size):
-        assert isinstance(output_size, (int, tuple))
-        if isinstance(output_size, int):
-            self.output_size = (output_size, output_size)
-        else:
-            assert len(output_size) == 2
-            self.output_size = output_size
+        self.transform = transforms.RandomCrop(output_size)
 
     def __call__(self, sample):
         image, latents = sample['image'], sample['latents']
-        h, w = image.shape[:2]
-        new_h, new_w = self.output_size
-        top = np.random.randint(0, h - new_h)
-        left = np.random.randint(0, w - new_w)
-        image = image[top: top + new_h, left: left + new_w]
-        return {'image': image, 'latents': latents}
+        return {'image': self.transform(image), 'latents': latents}
 
 class Normalize(object):
     def __init__(self, mean, std):
@@ -150,19 +142,27 @@ def imshow(inp, title=None):
     plt.pause(0.001)  # pause a bit so that plots are updated
 
 if __name__ == "__main__":
+    assert (torch.cuda.is_available())
     transforms = transforms.Compose([
                     SquarePad(),
                     Resize(224),
+                    # RandomCrop(224),
                     ToTensor(),
                     Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
                  ])
 
-    dataset = SeedPredictionDataset(root_dir='train/train/', transform=transforms)
-    dataloader = DataLoader(dataset, batch_size=4, shuffle=True, num_workers=0)
-    assert (torch.cuda.is_available())
-    device = torch.device('cuda')
+    dataset = SeedPredictionDataset(root_dir='train/', transform=transforms)
+    print (f'{len(dataset)}-sized dataset')
 
-    for index, batch in enumerate(dataloader):
+    train_size = int(0.8 * len(dataset))
+    test_size = len(dataset) - train_size
+    dataset_train, dataset_test = torch.utils.data.random_split(dataset, [train_size, test_size])
+    dataloader_train = DataLoader(dataset_train, batch_size=16, shuffle=True, num_workers=0)
+    dataloader_test = DataLoader(dataset_test, batch_size=16, shuffle=True, num_workers=0)
+    dataloaders = {'train': dataloader_train, 'test': dataloader_test}
+    datasets = {'train': dataset_train , 'test': dataset_test }
+
+    for index, batch in enumerate(dataloader_test):
         images = batch['image'].float()
         latents = batch['latents'].float()
         output = torchvision.utils.make_grid(images)
@@ -170,19 +170,21 @@ if __name__ == "__main__":
         plt.show()
         break
 
+    # Freeze model
     model = models.resnet18(pretrained=True)
     for param in model.parameters():
         param.requires_grad = False
 
+    # Remap
     NETWORK_FEATURE_CARDINALITY = model.fc.in_features
     LATENT_CARDINALITY = 512
     model.fc = nn.Linear(NETWORK_FEATURE_CARDINALITY, LATENT_CARDINALITY)
     model.to('cuda')
 
-    criterion = nn.MSELoss()
+    # criterion = nn.MSELoss()
+    criterion = nn.L1Loss()
 
-    # optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
-    exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
-    model_conv = train_model(model, criterion, optimizer, exp_lr_scheduler, num_epochs=100)
-    print ('Done')
+    scheduler = lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
+    result = train_model(model, criterion, optimizer, scheduler, num_epochs=100)
+    torch.save(result, 'prediction.pt')

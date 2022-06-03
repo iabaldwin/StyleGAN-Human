@@ -16,6 +16,7 @@ def generate_training_data():
 
     if os.path.isdir('train'):
         shutil.rmtree('train')
+    os.makedirs('train/test')
     os.makedirs('train/train')
 
     seeds = range(0, 10000, 10)
@@ -28,10 +29,9 @@ def generate_training_data():
         img = G.synthesis(w, noise_mode='const', force_fp32 = True)
         img = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
         result = PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB')
-        result.save(f'train/train/seed_{seed:04d}.png')
-        np.savetxt(f'train/train/seed_{seed:04d}.txt', z.cpu().numpy())
-
-
+        result.save(f'train/seed_{seed:04d}.png')
+        sample = np.squeeze(w)
+        np.savetxt(f'train/seed_{seed:04d}.txt', sample.cpu())
         if (seed_idx % 100 == 0):
             result.show()
 
