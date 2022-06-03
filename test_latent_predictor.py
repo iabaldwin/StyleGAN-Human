@@ -44,31 +44,33 @@ def plot(tensor):
 with dnnlib.util.open_url(PKL) as f:
     G = legacy.load_network_pkl(f)['G_ema'].to(DEVICE)
     label = torch.zeros([1, G.c_dim]).to(DEVICE)
-    z = torch.from_numpy(np.random.RandomState(20).randn(1, G.z_dim)).to(DEVICE)
-    w = G.mapping(z, label, truncation_psi=1.0)
-    img = G.synthesis(w, force_fp32=True)
-    show = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
-    input_image = PIL.Image.fromarray(show[0].cpu().numpy(), 'RGB');
-    input_image.show()
+   
+    for i in range(0,10):
+        z = torch.from_numpy(np.random.RandomState(i).randn(1, G.z_dim)).to(DEVICE)
+        w = G.mapping(z, label, truncation_psi=1.0)
+        img = G.synthesis(w, force_fp32=True)
+        show = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
+        input_image = PIL.Image.fromarray(show[0].cpu().numpy(), 'RGB');
+        input_image.show()
 
-    image_transforms = transforms.Compose([
-	SquarePad(),
-	transforms.Resize(224),
-	transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
+        image_transforms = transforms.Compose([
+            SquarePad(),
+            transforms.Resize(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
 
-    inputs = image_transforms(input_image)
-    plot(inputs)
-    inputs = torch.unsqueeze(inputs, 0).to(DEVICE)
+        inputs = image_transforms(input_image)
+        # plot(inputs)
+        inputs = torch.unsqueeze(inputs, 0).to(DEVICE)
 
-    w = model(inputs)
-    W = w.repeat((16, 1))
-    W = torch.unsqueeze(W, 0)
-    img = G.synthesis(W, force_fp32=True)
-    show = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
-    result = PIL.Image.fromarray(show[0].cpu().numpy(), 'RGB');
-    result.show()
+        w = model(inputs)
+        W = w.repeat((16, 1))
+        W = torch.unsqueeze(W, 0)
+        img = G.synthesis(W, force_fp32=True)
+        show = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
+        result = PIL.Image.fromarray(show[0].cpu().numpy(), 'RGB');
+        result.show()
 
     import sys
     sys.exit()

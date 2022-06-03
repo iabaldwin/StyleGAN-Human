@@ -56,7 +56,6 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
                 min_loss = epoch_loss
                 print (min_loss)
                 best_model_wts = copy.deepcopy(model.state_dict())
-
         print()
 
     time_elapsed = time.time() - since
@@ -64,12 +63,12 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
     model.load_state_dict(best_model_wts)
     return model
 
-class SeedPredictionDataset(Dataset):
+class LatentPredictionDataset(Dataset):
     def __init__(self, root_dir, transform=None):
         assert (os.path.isdir(root_dir))
         contents = [os.path.join(root_dir, x) for x in os.listdir(root_dir)]
         self._images = [image for image in contents if image.endswith('.png')]
-        self._latents = [seed for seed in contents if seed.endswith('.txt')]
+        self._latents = [latent for latent in contents if latent.endswith('.txt')]
         assert (len(self._images) == len(self._latents)), f'{len(self._images)} vs. {len(self._latents)}'
         self.transform = transform
 
@@ -144,14 +143,14 @@ def imshow(inp, title=None):
 if __name__ == "__main__":
     assert (torch.cuda.is_available())
     transforms = transforms.Compose([
-                    SquarePad(),
-                    Resize(224),
-                    # RandomCrop(224),
-                    ToTensor(),
-                    Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-                 ])
+                                        SquarePad(),
+                                        Resize(224),
+                                        # RandomCrop(224),
+                                        ToTensor(),
+                                        Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+                                    ])
 
-    dataset = SeedPredictionDataset(root_dir='train/', transform=transforms)
+    dataset = LatentPredictionDataset(root_dir='train/', transform=transforms)
     print (f'{len(dataset)}-sized dataset')
 
     train_size = int(0.8 * len(dataset))
@@ -178,11 +177,14 @@ if __name__ == "__main__":
     # Remap
     NETWORK_FEATURE_CARDINALITY = model.fc.in_features
     LATENT_CARDINALITY = 512
-    model.fc = nn.Linear(NETWORK_FEATURE_CARDINALITY, LATENT_CARDINALITY)
+    # model.fc = nn.Linear(NETWORK_FEATURE_CARDINALITY, LATENT_CARDINALITY)
+    model.fc = nn.Sequential(
+        nn.Linear(NETWORK_FEATURE_CARDINALITY, NETWORK_FEATURE_CARDINALITY),
+        nn.Linear(NETWORK_FEATURE_CARDINALITY, LATENT_CARDINALITY)
+    )
     model.to('cuda')
 
-    # criterion = nn.MSELoss()
-    criterion = nn.L1Loss()
+    criterion = nn.MSELoss()
 
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     scheduler = lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)

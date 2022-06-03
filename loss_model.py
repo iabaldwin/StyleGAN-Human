@@ -26,8 +26,8 @@ class LossNetwork(torch.nn.Module):
         # latent = self.G.mapping(input[0], label, 1.0)
         # Synthesize image
         # synthesized = self.G.synthesis(input, force_fp32 = True)
-
-        W = input[0, :]
+        # W = input[0, :]
+        W = input
         print (W.shape)
         W = W.repeat((16, 1))
         print (W.shape)
